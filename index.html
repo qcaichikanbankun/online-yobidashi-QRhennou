@@ -95,6 +95,7 @@
     </div>
 
     <div class="master-panel">
+        <!-- ▼ プルダウンを廃止し、QRスキャン呼び出しボタンに変更 ▼ -->
         <button id="master-btn" onclick="startMasterChangeMode()">
             ▼ スキャンでマスター変更
         </button>
@@ -116,14 +117,15 @@
         <div class="modal-content">
             <h2>マスター登録・詳細設定</h2>
 
-            <!-- 端末名設定ボタン -->
+            <!-- ▼ 端末名設定ボタン ▼ -->
             <button class="btn-sub" style="width:100%; margin-bottom:10px; padding:15px; border:2px solid #007bff; background:#fff; color:#007bff; font-weight:bold;" onclick="setDeviceName()">📱 この端末の設置場所を設定する</button>
             
-            <!-- パスワード変更ボタン -->
+            <!-- ▼ パスワード変更ボタンを追加 ▼ -->
             <button class="btn-sub" style="width:100%; margin-bottom:20px; padding:15px; border:2px solid #28a745; background:#fff; color:#28a745; font-weight:bold;" onclick="setDevicePassword()">🔑 解除パスワードを変更する</button>
 
             <div style="padding:15px;background:#eee;border-radius:15px;text-align:center;margin-bottom:20px;">
                 <canvas id="mini-canvas"></canvas>
+                <!-- ▼ 今のQRを登録ボタンを緑色（#28a745）に変更 ▼ -->
                 <button class="btn-main" style="width:100%; margin-top:15px; padding:20px; background:#28a745; color: #fff; font-weight: bold; text-shadow: 1px 1px 2px rgba(0,0,0,0.5);" onclick="registerNew()">今のQRを登録</button>
             </div>
             <div id="edit-list"></div>
@@ -148,6 +150,7 @@
     </div>
 
 <script>
+// Service Workerの登録
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js')
@@ -156,12 +159,13 @@ if ('serviceWorker' in navigator) {
     });
 }
 
+// 動的にパスワードを取得する関数（初期値は 8181）
 function getDevicePassword() {
     return localStorage.getItem("kb_v19_password") || "8181";
 }
 
 const SCAN_INTERVAL_MS = 30000;
-const ANALYSIS_INTERVAL = 200;
+const ANALYSIS_INTERVAL = 200; // QR解析を行う間隔（ミリ秒）: 200ms = 秒間5回
 
 const video = document.createElement("video");
 const canvasElement = document.getElementById("canvas");
@@ -171,7 +175,7 @@ const miniCanvas = miniCanvasElement.getContext("2d");
 let audioCtx;
 let isLocked = false;
 let isInterval = false;
-let currentFacingMode = "user";
+let currentFacingMode = "user"; // "user" または "environment"
 let okCount = 0; 
 let lastAnalysisTime = 0;
 
@@ -181,6 +185,8 @@ let activeMaster = null;
 let isProcessing = false;
 let lastSeenQR = "";
 let seenCount = 0;
+
+// ▼ 追加：マスター変更モードを管理するフラグ ▼
 let masterSetMode = false;
 
 function playBeep(type) {
@@ -256,38 +262,47 @@ function tick() {
         if (now - lastAnalysisTime > ANALYSIS_INTERVAL) {
             lastAnalysisTime = now;
             const img = canvas.getImageData(0, 0, canvasElement.width, canvasElement.height);
+            // jsQRを呼び出し
             const code = jsQR(img.data, img.width, img.height, { inversionAttempts: "dontInvert" });
             
             if (code && code.data.trim() !== "") {
                 if (code.data === lastSeenQR) { seenCount++; } else { lastSeenQR = code.data; seenCount = 1; }
                 if (seenCount >= 2) {
+                    // ★ プルダウンを廃止したため、条件を整理
                     if (!isProcessing && !isLocked && !isInterval && document.getElementById("mgmt-modal").style.display !== "flex") {
+                        
+                        // ▼ 追加：マスター変更モードの場合 ▼
                         if (masterSetMode) {
                             isProcessing = true;
                             const matched = masters.find(m => m.code === code.data);
+                            
                             if (matched) {
                                 playBeep("ok");
                                 activeMaster = matched;
                                 document.getElementById("target-info").innerText = activeMaster.name;
                                 resetCount();
+                                
                                 document.body.className = "ok";
                                 document.getElementById("status-display").style.fontSize = "4.5rem";
                                 document.getElementById("status-display").innerText = "変更完了！";
+                                
                                 setTimeout(() => {
                                     masterSetMode = false;
                                     isProcessing = false;
                                     document.body.className = "";
-                                    document.getElementById("status-display").style.fontSize = "";
+                                    document.getElementById("status-display").style.fontSize = ""; // CSSの初期値(8rem)に戻す
                                     document.getElementById("status-display").innerText = "READY";
                                 }, 1500);
                             } else {
                                 playBeep("ng");
-                                activeMaster = null; 
+                                activeMaster = null; // 未登録の場合は強制リセット
                                 document.getElementById("target-info").innerText = "未選択";
                                 resetCount();
+                                
                                 document.body.className = "ng";
                                 document.getElementById("status-display").style.fontSize = "4.5rem";
                                 document.getElementById("status-display").innerText = "未登録エラー";
+                                
                                 setTimeout(() => {
                                     alert("このかんばんは登録されていません。\n（安全のためマスター未選択状態に戻ります）");
                                     masterSetMode = false;
@@ -300,6 +315,8 @@ function tick() {
                             seenCount = 0; lastSeenQR = "";
                             return;
                         }
+                        
+                        // ▼ 既存：通常照合モードの場合 ▼
                         if (activeMaster) {
                             isProcessing = true;
                             const ok = (code.data === activeMaster.code);
@@ -307,6 +324,7 @@ function tick() {
                             updateStatus(ok);
                             saveLog(ok ? "OK" : "NG");
                         }
+                        
                         seenCount = 0; lastSeenQR = "";
                     }
                 }
@@ -316,8 +334,11 @@ function tick() {
     requestAnimationFrame(tick);
 }
 
+// ▼ 追加：マスター変更ボタンを押した時の処理 ▼
 function startMasterChangeMode() {
     if (isLocked) return;
+    
+    // もう一度押したらキャンセルできるようにする
     if (masterSetMode) {
         masterSetMode = false;
         document.body.className = "";
@@ -326,6 +347,7 @@ function startMasterChangeMode() {
         document.getElementById("target-info").innerText = activeMaster ? activeMaster.name : "未選択";
         return;
     }
+
     masterSetMode = true;
     document.body.className = "wait";
     document.getElementById("status-display").style.fontSize = "4.5rem";
@@ -339,31 +361,37 @@ function updateStatus(ok) {
         updateCountDisplay();
         document.body.className = "ok";
         document.getElementById("status-display").innerText = "OK";
+        
         setTimeout(() => {
             isInterval = true;
             isProcessing = false;
             document.body.className = "wait";
             document.getElementById("status-display").innerText = "WAIT";
+            
             setTimeout(() => {
                 isInterval = false;
                 document.body.className = "";
                 document.getElementById("status-display").style.fontSize = "";
                 document.getElementById("status-display").innerText = "READY";
             }, SCAN_INTERVAL_MS);
+            
         }, 1200);
     } else {
         document.body.className = "ng";
         document.getElementById("status-display").innerText = "NG";
         isLocked = true;
 
+        // --- 追加：NG発生時にLINEへ通知（Android用） ---
         sendNotification("【NG発生】かんばん照合で不一致が発生しました");
 
+// --- 既存：NG発生時にショートカット通知を起動（iPhone用） ---
         const deviceName = localStorage.getItem("kb_v19_device_name") || "未設定端末";
         const productName = activeMaster ? activeMaster.name : "製品未選択";
         const shortcutMsg = `【${deviceName}】\n【NG発生】かんばん照合で不一致が発生しました\n(対象: ${productName})`;
 
         const shortcutName = encodeURIComponent("QR通知");
         const text = encodeURIComponent(shortcutMsg);
+        // iOSショートカット起動（通信を優先させるため少し遅延）
         setTimeout(() => {
             window.location.href = `shortcuts://run-shortcut?name=${shortcutName}&input=text&text=${text}`;
         }, 150);
@@ -386,11 +414,12 @@ function resetCount() {
 
 function unlock() {
     const input = document.getElementById("pw-input").value;
-    const currentPassword = getDevicePassword();
+    const currentPassword = getDevicePassword(); // 各端末で設定されたパスワードを取得
+
     if (input === currentPassword) {
         isLocked = false;
         isProcessing = false;
-        masterSetMode = false;
+        masterSetMode = false; // ▼ ロック解除時にモードを初期化
         document.getElementById("lock-overlay").style.display = "none";
         document.getElementById("pw-input").value = "";
         document.body.className = "";
@@ -468,7 +497,9 @@ function renderAnalysis() {
 function clearLogs() {
     const input = prompt("履歴を削除するにはパスワードを入力してください:");
     if (input === null) return;
-    const currentPassword = getDevicePassword();
+    
+    const currentPassword = getDevicePassword(); // 各端末の設定パスワードを取得
+
     if (input === currentPassword) {
         if (confirm("本当に全ての履歴を削除しますか？")) {
             logs = [];
@@ -487,7 +518,7 @@ function confirmFinish() {
     if (confirm("生産を終了しますか？\n（かんばん照合枚数もリセットされます）")) {
         activeMaster = null;
         isInterval = false;
-        masterSetMode = false;
+        masterSetMode = false; // ▼ 終了時にモードを初期化
         document.getElementById("target-info").innerText = "未選択";
         document.body.className = "";
         document.getElementById("status-display").style.fontSize = "";
@@ -496,16 +527,11 @@ function confirmFinish() {
     }
 }
 
-// ファイル名に設置場所が反映されるように修正
 function exportCSV() {
-    const deviceName = localStorage.getItem("kb_v19_device_name") || "未設定端末";
     let csv = "日付,時間,マスター名,結果\n";
     logs.forEach(l => { csv += `${l.date},${l.time},${l.master},${l.result}\n`; });
     const b = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csv], { type: "text/csv" });
-    const a = document.createElement("a"); 
-    a.href = URL.createObjectURL(b); 
-    a.download = `${deviceName}_照合履歴.csv`; 
-    a.click();
+    const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = `scan_report.csv`; a.click();
 }
 
 function triggerIphoneShortcut(statusMessage) {
@@ -527,14 +553,17 @@ function triggerIphoneShortcut(statusMessage) {
         console.error("Log error:", e);
     }
 
+    // --- 追加：LINE通知を起動（Android用） ---
     sendNotification(statusMessage || "【呼び出し】管理者を呼んでいます");
 
+// --- 既存：iPhoneショートカットを起動 ---
     const deviceName = localStorage.getItem("kb_v19_device_name") || "未設定端末";
     const productName = activeMaster ? activeMaster.name : "製品未選択";
     const shortcutMsg = `【${deviceName}】\n${statusMessage || "管理者を呼んでいます"}\n(対象: ${productName})`;
 
     const shortcutName = encodeURIComponent("QR通知");
     const text = encodeURIComponent(shortcutMsg);
+    // iOSショートカット起動（通信を優先させるため少し遅延）
     setTimeout(() => {
         window.location.href = `shortcuts://run-shortcut?name=${shortcutName}&input=text&text=${text}`;
     }, 100);
@@ -544,7 +573,7 @@ function triggerIphoneShortcut(statusMessage) {
         if (overlay) { overlay.style.display = "flex"; }
         
         let pass = "";
-        const currentPassword = getDevicePassword();
+        const currentPassword = getDevicePassword(); // 各端末の設定パスワードを取得
 
         while (pass !== currentPassword) {
             pass = prompt("【作業中断中】\n管理者の解除パスワードを入力してください：");
@@ -555,6 +584,10 @@ function triggerIphoneShortcut(statusMessage) {
         alert("ロックを解除しました。");
     }, 1000);
 }
+
+// ==========================================
+// 追加機能：端末設定・パスワード設定・LINE通知
+// ==========================================
 
 // 端末名を設定して記憶する関数
 function setDeviceName() {
@@ -571,38 +604,47 @@ function setDeviceName() {
 function setDevicePassword() {
     const currentPw = getDevicePassword();
     
+    // ① 現在のパスワードを入力して確認
     const inputCurrent = prompt("現在の管理者解除パスワードを入力してください。");
-    if (inputCurrent === null) return; 
+    if (inputCurrent === null) return; // キャンセルされた場合は終了
     
     if (inputCurrent !== currentPw) {
         alert("現在のパスワードが違います。変更はキャンセルされました。");
         return;
     }
     
+    // ② 新しいパスワードを入力
     const newPw = prompt("新しい管理者解除パスワードを入力してください。");
     if (newPw === null || newPw.trim() === "") {
         alert("無効な入力です。変更はキャンセルされました。");
         return;
     }
     
+    // ③ 確認のためもう一度入力
     const confirmPw = prompt("確認のため、もう一度新しいパスワードを入力してください。");
-    if (confirmPw === null) return;
+    if (confirmPw === null) return; // キャンセルされた場合は終了
     
+    // ④ 新しいパスワードの照合
     if (newPw !== confirmPw) {
         alert("入力された新しいパスワードが一致しません。変更はキャンセルされました。");
         return;
     }
     
+    // ⑤ すべてクリアしたら保存
     localStorage.setItem("kb_v19_password", newPw.trim());
     alert(`管理者解除パスワードを「${newPw.trim()}」に変更しました。`);
 }
 
 // LINEへWebhook通信を行う関数
 function sendNotification(messageText) {
+    // 【重要】ご自身で発行したGASのウェブアプリURLに書き換えてください
     const gasUrl = "https://script.google.com/macros/s/AKfycbzaCRZV4O9qWmM0jPIMrTVoCoePztgWpyyW5aIkFEY6XA67FH-e-d8TAlIOFu0IMQqpOA/exec"; 
     
+    // iPadに記憶させた端末名を取得（未設定なら「未設定端末」とする）
     const deviceName = localStorage.getItem("kb_v19_device_name") || "未設定端末";
     const productName = activeMaster ? activeMaster.name : "製品未選択";
+    
+    // LINEに送る最終的なメッセージを組み立てる
     const finalMessage = `【${deviceName}】\n${messageText}\n(対象: ${productName})`;
 
     fetch(gasUrl, {
@@ -615,10 +657,14 @@ function sendNotification(messageText) {
     }).catch(e => console.error("通知送信エラー:", e));
 }
 
+// ==========================================
+
+// ページ読み込み時の初期化
 renderEditList(); 
 renderRecentLogs();
 </script>
 
+<!-- 管理者ロックオーバーレイ -->
 <div id="admin-lock-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; color: #fff; z-index: 999999; text-align: center; flex-direction: column; justify-content: center; align-items: center; font-family: sans-serif;">
     <div style="padding: 20px;">
         <h1 style="color: #ffc107; font-size: 2.5rem; margin-bottom: 20px;">⚠️ 管理者呼び出し中</h1>
